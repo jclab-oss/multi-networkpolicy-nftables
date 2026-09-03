@@ -40,6 +40,9 @@ kubectl -n kube-system wait --for=condition=available deploy/coredns --timeout=3
 
 #install multus
 kubectl apply --wait --timeout=10s -f https://raw.githubusercontent.com/k8snetworkplumbingwg/multus-cni/master/deployments/multus-daemonset.yml
+# "kubectl wait" fails immediately when no pod matches the selector yet, so wait for
+# the DaemonSet to create its pods first instead of racing against the apply above.
+kubectl -n kube-system rollout status daemonset/kube-multus-ds --timeout=660s
 kubectl -n kube-system wait --for=condition=ready -l name=multus pod --timeout=660s
 kubectl apply --wait --timeout=10s -f cni-install.yml
 kubectl -n kube-system rollout status daemonset/install-cni-plugins --timeout=300s
