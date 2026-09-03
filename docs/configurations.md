@@ -84,3 +84,19 @@ Notes:
 * Kata's `tcfilter` networking model is **not** supported: TC `mirred redirect`
   takes the packet before netfilter, so no nftables hook in the pod network
   namespace sees the traffic.
+
+#### Pods using a net-attach-def as their primary network
+
+Multus can replace a pod's primary network with a NetworkAttachmentDefinition via
+the `v1.multus-cni.io/default-network` annotation. Such pods have no
+`k8s.v1.cni.cncf.io/networks` annotation, and their net-attach-def backed
+interface is `eth0` rather than `net1`.
+
+These pods are policed like any other: the network from the default-network
+annotation is resolved the same way as the secondary networks, so a
+MultiNetworkPolicy with `k8s.v1.cni.cncf.io/policy-for: <namespace>/<net-attach-def>`
+applies to the primary interface.
+
+As with secondary networks, the plugin type of the net-attach-def must be listed in
+`--network-plugins` (default: `macvlan`), so a pod whose default network uses a
+plugin outside that list stays unfiltered.

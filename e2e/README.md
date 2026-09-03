@@ -45,3 +45,12 @@ all other suites (`./run_all_tests.sh`) or on its own:
 ```
 $ ./run_single_test.sh forward-filtering
 ```
+
+### Default network test
+
+`tests/default-network.bats` covers pods that select a net-attach-def as their
+*primary* network with `v1.multus-cni.io/default-network` instead of requesting
+secondary networks. The policed interface of those pods is `eth0`, and they have no
+`k8s.v1.cni.cncf.io/networks` annotation at all.
+
+Note that such pods only reach the macvlan network, not the cluster network.
