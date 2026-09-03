@@ -10,7 +10,9 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/proto"
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	pb "k8s.io/cri-api/pkg/apis/runtime/v1"
 )
 
@@ -374,4 +376,46 @@ func TestParseDefaultNetworkAnnotation(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestNewPodInfoFromPodSkipsMissingNetAttachDef verifies that a pod referencing a
+// network without a net-attach-def object does not fail the whole pod info build:
+// the network is skipped, while other resolution errors are still propagated.
+func TestNewPodInfoFromPodSkipsMissingNetAttachDef(t *testing.T) {
+	t.Parallel()
+
+	notFound := apierrors.NewNotFound(schema.GroupResource{
+		Group:    "k8s.cni.cncf.io",
+		Resource: "network-attachment-definitions",
+	}, "net-a")
+
+	t.Run("missing net-attach-def is skipped", func(t *testing.T) {
+		t.Parallel()
+
+		pod := podWithNetworkAnnotations()
+		conn := &fakeRuntimeConn{t: t, response: containerStatusWithInfo(`{"pid":1234}`)}
+
+		podInfo, err := NewPodInfoFromPod(context.Background(), pod, pb.NewRuntimeServiceClient(conn), "node-a",
+			[]string{"macvlan"}, &mockNetDefResolver{err: fmt.Errorf("get network attachment definition: %w", notFound)})
+		if err != nil {
+			t.Fatalf("NewPodInfoFromPod() error = %v, want nil", err)
+		}
+		if len(podInfo.Interfaces) != 0 {
+			t.Fatalf("interfaces = %+v, want none", podInfo.Interfaces)
+		}
+	})
+
+	t.Run("other resolution errors are propagated", func(t *testing.T) {
+		t.Parallel()
+
+		wantErr := errors.New("api unavailable")
+		pod := podWithNetworkAnnotations()
+		conn := &fakeRuntimeConn{t: t, response: containerStatusWithInfo(`{"pid":1234}`)}
+
+		_, err := NewPodInfoFromPod(context.Background(), pod, pb.NewRuntimeServiceClient(conn), "node-a",
+			[]string{"macvlan"}, &mockNetDefResolver{err: wantErr})
+		if !errors.Is(err, wantErr) {
+			t.Fatalf("NewPodInfoFromPod() error = %v, want %v", err, wantErr)
+		}
+	})
 }

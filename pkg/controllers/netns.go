@@ -13,6 +13,7 @@ import (
 	multiutils "github.com/telekom/multi-networkpolicy-nftables/pkg/utils"
 
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/types"
 	pb "k8s.io/cri-api/pkg/apis/runtime/v1"
 	"k8s.io/klog/v2"
@@ -154,6 +155,14 @@ func NewPodInfoFromPod(ctx context.Context, pod *corev1.Pod, criClient pb.Runtim
 			}
 			pluginType, err := netdefResolver.GetPluginType(ctx, namespacedName)
 			if err != nil {
+				// A pod can reference a network that has no net-attach-def object,
+				// for instance when Multus resolved it from a CNI configuration file
+				// instead. Its plugin type cannot be determined, so the network is
+				// skipped rather than failing (and endlessly retrying) the whole pod.
+				if apierrors.IsNotFound(err) {
+					klog.Warningf("pod(%s/%s): skipping network attachment %s: not found", pod.Namespace, pod.Name, namespacedName)
+					continue
+				}
 				return nil, fmt.Errorf("resolve plugin type for network attachment %s: %w", namespacedName, err)
 			}
 			klog.V(8).Infof("networkPlugins[%s], %v", namespacedName, pluginType)
